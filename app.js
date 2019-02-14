@@ -7,17 +7,18 @@ const express = require('express') //함수 원형.
 //express의 함수원형을 볼 수 있음. 안에 다양한 application이 있음.
 
 const bodyParser = require('body-parser');
-const app = express(); //함수 원형을 넣어서 실행 시킴(()실행을 의미). 그안에 get이라든지 listen이라든지가 있음.
+const fs = require('fs');//file system을 쓸수있도록 해줌.
+const app = express(); //함수 원형을 넣어서 실행 시킴(()는 실행을 의미). 그안에 get이라든지 listen이라든지가 있음.
 const port = 3000;
 
 //express에 static(정적인) public 폴더를 root로 사용하겠다는 의미.
 //정적 폴더로서 root폴더 하나를 선택할 수 있고 선택한 폴더가 web root가 된다.
 app.locals.pretty = true;
 app.use('/', express.static('public')); //public 폴더(디렉토리가) root가 된다는 의미. 즉, web으로 접근하는 사람들은 public아래의 내용만 알 수 있음.
-app.use('/assets', express.static('assets'));
+app.use('/assets', express.static('assets')); //이곳도 절대경로로 접속할 수 있도록 함. root이지만 static으로 선언했기 때문에 사용자도 접근이 가능하다.
 app.use(bodyParser.urlencoded({extended:true})); //html에 url로 들어온다는 뜻.
 app.use(bodyParser.json()); //json으로 들어온다는 뜻.
-app.set('view engine', 'pug'); //pug 사용을 위해.. 이건 set으로 설정.
+app.set('view engine', 'pug'); //pug 사용을 위해.. 이건 set으로 설정. 템플릿으로 작성한 것을 쉽게 노드에서 접속할 수 있게 해줌
 app.set('views', './views'); //root로 부터의 디렉토리가 검색됨. public이 root이므로 ./로 지정. (__dirname+'/views'로도 가능.)
 
 /**
@@ -48,6 +49,7 @@ app.get('/page', (req,res) => {
 //semantic을 해보자. 정적페이지에 대하여 semantic으로 만들어 보기.
 //http://localhost:3000/page?id=3&user=jylee 이게 http://localhost:3000/page/3/jylee 이런식으로 보이는 것.
 //나중에 아래에 해당하는 것만 따로 빼서 module로 만들고, view단을 세분화한게 react다.
+//router 단..
 app.get('/book', getQuery);
 app.get('/book/:id', getQuery);
 app.get('/book/:id/:mode', getQuery);
@@ -59,16 +61,32 @@ app.get('/book/:id/:mode', getQuery);
 function getQuery(req, res) {
     //var id = req.query.id;
     //var id = req.query.mode;
-    var params = req.params;
+    var params = req.params; //0,1,2 이런게 param
     //console.log(params);
     var pageTitles = ["MAIN","PAGE1","PAGE2","PAGE3"];
-    if(typeof params.id !== 'undefined'){
+    if(typeof params.id !== 'undefined'){ //문자형으로 변경해줌 typeof로..
         if(params.id == 'new'){
             //입력양식 페이지.
-            res.render('wr', {title:"글쓰기"}); //view단을 render해줌. template는 wr을 씀.
+            res.render('wr', {title:"글쓰기"}); //view단을 render해줌. template는 wr을 씀. (wr.pug)
         }
         else {
-            res.render('nav', {
+            //파일을 읽고 캐릭터셋을 지정하고 error처리를 어떻게 할지에 대하여 function을 만들어 준다.
+            fs.readFile('./data/nav.json','utf-8',function(err, data){
+                //200은 정상 답변, 400은 error 등.. 상태와 응답을 동시에 보내줌. 브라우저로..
+                //if문을 감싸지않아도되며, if에 해당하지 않으면 그 다음줄이 출력된다.
+                if(err) res.status(500).send("Internal Error");
+                var datas = JSON.parse(data); //data가 json형태이므로 한방에 처리가능. json을 js object로 변경해줌.
+                //var booksTxt = JSON.stringify(books);//js object를 json으로 만드는 것.
+                //console.log(data); //json문자열
+                //console.log(books); //js object
+                //console.log(booksTxt); //js object를 다시 json으로..
+                res.render('nav', {
+                    title: "도서목록",
+                    pages: datas.books
+                });
+            });            
+            /** server단에서 값을 강제로 보내는 부분에 대한 테스트 code
+            res.render('nav', { //nav.pug
                 title: "도서목록",
                 pages: [
                     {id:0, tit:"홍길동전"},
@@ -77,6 +95,7 @@ function getQuery(req, res) {
                     {id:3, tit:"토끼와거북이"}
                 ]
             }); //객체가 들어감.
+            **/
         }
     }
     else {
@@ -119,8 +138,8 @@ app.get('/info',(req, res) => { // /info로 연결할 때의 page
 
 //() => console.log(`Example app listening on port ${port}!`) 이게 콜백함수임.
 //app.listen(port, () => console.log(`Example app listening on port ${port}!`))
+//서버 구동(한줄로 끝)
 app.listen(port, () => console.log(`http://localhost:${port}`));
-
 //매번 이 페이지의 정보를 변경하기 위해서 서버를 리스타트하는 것이 번거롭기 때문에 supervisor를 설치해서 사용함.
 //npm install -g supervisor
 //supervisor app.js
