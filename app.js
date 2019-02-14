@@ -1,20 +1,60 @@
 //여기 페이지는 서버를 구동중이므로 재시작을 해야만 적용됨. 즉, 동적인 것은 이 안에서 구현하면 됨.
 //server.js에서는 http를 가져왔지만, 여기선 express를 불러옴. express는 필요한 것만 모아놓았음.
 //express 4버전부터는 ;를 안넣어도 됨.
+//이 폴더에서 찾아야 하니깐 ./으로 찾음..
 const express = require('express'); //함수 원형.
 //console.log(express); //console은 어디서봐야 할까? 실행창에서.. 하지만 이미 실행중이므로 이 멍령어를 넣어도 바로 안보임.
 //위의 로그를 통해서 express의 함수원형을 볼 수 있음. 안에 다양한 application이 있음.
 
 const bodyParser = require('body-parser'); //post방식의 body처리를 도와줌.
 const fs = require('fs');//file system을 쓸수있도록 해줌.
+const multer = require('multer'); //file updoad를 위해서 설치하여 사용. npm install multer
+const db = require('./mysql_conn'); //db 연결..
+const mysql = db.mysql;
+const conn = db.conn;
+
 const app = express(); //함수 원형을 넣어서 실행 시킴(()는 실행을 의미). 그안에 get이라든지 listen이라든지가 있음.
 const port = 3000;
+//var upload = multer({ dest: 'uploads/' }); //종착지가 uploads 폴더에 file을 upload.
+//storage를 이용한 file upload..(디스크 스토리지 엔진은 파일을 디스크에 저장하기 위한 모든 제어 기능을 제공.)
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        var date = new Date();
+        var getMonth = (month) => {
+            if(month+1<10) return "0"+(month+1);
+            else return month+1;
+        }
+        var folder = "uploads/book/"+String(date.getFullYear()).substr(2)+getMonth(date.getMonth())+"/";        
+        if(!fs.existsSync(folder)) {
+            fs.mkdir(folder, (err) => {
+                if(!err) cb(null, folder);
+            });
+        }
+        else cb(null, folder); //폴더 처리구간
+    },
+    filename: function(req, file, cb){
+        cb(null, Date.now() + '-' + file.originalname);
+    }    
+});
+
+//multer file 확장자 체크
+function fileFilter (req, file, cb) {
+    var filename = file.originalname.split('.'); //.을 기준으로 split하면 .을 기준으로 배열이 됨. 그중 마지막이 확장자.
+    var ext = filename[filename.length-1]; //그래서 확장자를 왼쪽처럼 찾는것.
+    var allowExt = "jpg|gif|jpeg|png";
+    if(allowExt.includes(ext)) cb(null, true);  //includes..포함되어 있으면 성공.
+    else cb(null, false); //아니면 실패
+}
+
+//var upload = multer({ storage: storage }); //storage..
+var upload = multer({ storage, fileFilter }); //filefilter 사용.
 
 //express에 static(정적인) public 폴더를 root로 사용하겠다는 의미.
 //정적 폴더로서 root폴더 하나를 선택할 수 있고 선택한 폴더가 web root가 된다.
 app.locals.pretty = true;
 app.use('/', express.static('public')); //public 폴더(디렉토리가) root가 된다는 의미. 즉, web으로 접근하는 사람들은 public아래의 내용만 알 수 있음.
 app.use('/assets', express.static('assets')); //이곳도 절대경로로 접속할 수 있도록 함. root이지만 static으로 선언했기 때문에 사용자도 접근이 가능하다.
+app.use('/uploads', express.static('uploads')); //이미지를 uploads하는 폴더를 모두가 접근하도록 해줌.
 app.use(bodyParser.urlencoded({extended:true})); //html에 url로 들어온다는 뜻.
 app.use(bodyParser.json()); //json으로 들어온다는 뜻.
 app.set('view engine', 'pug'); //pug 사용을 위해.. 이건 set으로 설정. 템플릿으로 작성한 것을 쉽게 노드에서 접속할 수 있게 해줌
@@ -56,9 +96,9 @@ app.get('/book/:id/:mode', getQuery);
 //body-parser WAS개념. 미들웨어.
 //npm install body-parser 프로젝트 사용될 놈이므로 -g 옵션을 안줌.
 //우리가 설치한 모든 pkg는 package.json에 모드 들어 있음.
-app.post('/book/create', postQuery); //post에 대한 내용.(저장)
+app.post('/book/create', upload.single('upfile'), postQuery); //post에 대한 내용.(저장) multer에서 싱글로 file을 올려라..
 
-function postQuery(req, res) {
+function postQuery(req, res, next) { //next는 그다음에 할일을 함수로 만들어서 전달해주는 것..
     //title,content에 data가 전달됨.
     //get에서는 ?id방식의 query 또는 param로 받아왔지만. post는 body에서 받아음.(즉 편지지)
     //원래는 var title = req.body.title가 안됨. body-parser가 존재하기 때문에 가능함 이게 없으면 error발생하게 됨.
@@ -67,24 +107,41 @@ function postQuery(req, res) {
     var str = "";
     //console.log(title + content);
     //res.send(title + " / " + content);    
-    fs.readFile('./data/book.json','utf-8',function(err, data){
+    fs.readFile('./data/book.json', 'utf-8', function(err, data){
         if(err) res.status(500).send("Internal Error");
         var datas = JSON.parse(data);
+        var id = datas.books[datas.books.length -1].id + 1;
         datas.books.push({
             tit, //tit으로 하는 것은 ES6 문법. var tit = req.body.title 가 있으므로..
-            id: datas.books[datas.books.length -1].id + 1, //data가 숫자이므로 마지막 숫자에 +1을해서 id를 부여하는 것.
+            id, //data가 숫자이므로 마지막 숫자에 +1을해서 id를 부여하는 것.
             content //ES6 문법. var content = req.body.content 가 있으므로..
         }); //datas에 books는 []배열임.
-        str = JSON.stringify(datas);
+        str = JSON.stringify(datas);        
+        var sql = "INSERT INTO books SET title=?, content=?, filename=? ";
+        //var params = [tit, content, 'aaa.jpg'];
+        var params = [tit, content, req.file.filename];
+        conn.query(sql, params, (err, rows, field) => {
+          if(err) console.log(err);
+          else console.log(rows, next);
+        });
         fs.writeFile('./data/book.json', str, (err) => {
             if(err) res.status(500).send("Internal Error");
             else{
+                /**
                 //res.send('저장 성공');
                 //redirect개념이 아님. response로 처리.
-                //저장시킨 data가 있으므로 다시 도서목록으로 가려면
+                //저장시킨 data가 있으므로 다시 도서목록으로 가려면 아래와 같이..
                 var pugData = {pages: datas.books};
                 pugData.title = "도서 목록";
                 res.render('li', pugData);
+                위와같은 처리는 좋은 방법이 아님..
+                **/
+               //res.send(`<script>location.href="/book/${id}"</script>`);
+               res.redirect("/book/"+id);
+               /**
+               res.writeHead(301, {location: '/book/'+id}); //redirect method안에 요렇게 되어 있을걸?
+               res.end();
+               **/
             }
         });
     });
