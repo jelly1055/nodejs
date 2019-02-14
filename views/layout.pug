@@ -8,7 +8,9 @@ html(lange="ko")
         link(href="/assets/css/nav.css" rel="stylesheet")
     body
         div(class="wrap")
+            block top
             ul(class="navs clear")
                 each page in pages
                     li(class="nav")
                         a(href="/book/"+page.id)=page.tit
+            block content
