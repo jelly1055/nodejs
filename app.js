@@ -119,6 +119,7 @@ function postQuery(req, res, next) { //next는 그다음에 할일을 함수로 
         str = JSON.stringify(datas);        
         var sql = "INSERT INTO books SET title=?, content=?, filename=? ";
         //var params = [tit, content, 'aaa.jpg'];
+        //console.log(req); //이걸 통해서 request 단계의 data path를 알 수 있음..
         var params = [tit, content, req.file.filename];
         conn.query(sql, params, (err, rows, field) => {
           if(err) console.log(err);
